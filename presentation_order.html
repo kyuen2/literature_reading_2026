@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>汇报排序 W12–W18</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100vh;color:#1e1b2e;
+  background:
+    radial-gradient(1200px 600px at 8% -12%, rgba(124,58,237,.30), transparent 60%),
+    radial-gradient(900px 520px at 100% -5%, rgba(219,39,119,.20), transparent 55%),
+    linear-gradient(160deg,#171031 0%,#241a4d 55%,#1b1240 100%);
+  background-attachment:fixed;
+  padding:44px 20px 70px;
+}
+.wrap{max-width:1120px;margin:0 auto}
+header{text-align:center;color:#fff;margin-bottom:26px}
+h1{font-size:clamp(20px,3.4vw,30px);font-weight:800;letter-spacing:2px;text-shadow:0 4px 24px rgba(0,0,0,.35)}
+h1 .hl{background:linear-gradient(90deg,#fbbf24,#f59e0b,#fb923c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.controls{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:26px}
+.btn{cursor:pointer;border:none;border-radius:14px;font:inherit;font-weight:700;transition:.15s}
+.btn:active{transform:scale(.97)}
+.btn.primary{font-size:18px;padding:13px 40px;color:#fff;background:linear-gradient(135deg,#7c3aed,#db2777);box-shadow:0 10px 30px rgba(124,58,237,.35)}
+.btn.primary:hover{transform:translateY(-2px)}
+.btn.primary:disabled{opacity:.6;cursor:wait;transform:none}
+.btn.ghost{font-size:14px;padding:10px 18px;color:#e9d5ff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.20)}
+.btn.ghost:hover{background:rgba(255,255,255,.14)}
+.hidden{display:none!important}
+.weeks{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+.week{background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.26);opacity:.38;transform:translateY(8px);transition:opacity .45s,transform .45s}
+.week.on{opacity:1;transform:none}
+.week-head{padding:11px 16px;color:#fff;font-size:18px;font-weight:800;letter-spacing:1px;background:linear-gradient(135deg,var(--a),var(--b))}
+.week-body{padding:12px;display:flex;flex-direction:column;gap:9px}
+.slot{display:flex;align-items:center;gap:10px;background:#f7f5ff;border:1px solid #ece7ff;border-radius:12px;padding:9px 11px}
+.slot .rank{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800;background:linear-gradient(135deg,var(--a),var(--b))}
+.slot .name{font-size:17px;font-weight:700;color:#241a4d;white-space:nowrap}
+.slot.rolling .name{color:#b9aede;filter:blur(1px)}
+.slot.revealed{animation:pop .38s ease both;background:#fdfaff}
+@keyframes pop{0%{transform:scale(.88);opacity:.4}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);background:#241a4d;color:#fff;font-size:14px;padding:11px 20px;border-radius:12px;border:1px solid rgba(255,255,255,.18);opacity:0;transition:.3s;z-index:60;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:560px){.btn.primary{width:100%}}
+@media print{
+  body{background:#fff;padding:0}
+  .controls,.toast{display:none!important}
+  .weeks{grid-template-columns:repeat(4,1fr);gap:8px}
+  .week{opacity:1!important;transform:none!important;box-shadow:none;border:1px solid #999;break-inside:avoid}
+  header{color:#000}
+  h1 .hl{color:#4c1d95;-webkit-text-fill-color:#4c1d95}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>汇报排序 <span class="hl">W12–W18</span></h1></header>
+  <div class="controls">
+    <button type="button" id="drawBtn" class="btn primary">抽取</button>
+    <button type="button" id="copyBtn" class="btn ghost hidden">复制</button>
+    <button type="button" id="printBtn" class="btn ghost hidden">打印</button>
+  </div>
+  <section class="weeks" id="weeks" aria-live="polite"></section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const STUDENTS = [
+  "陈卓儒","董琼璘","李南稣",
+  "李易阳","李卓帆","刘思远",
+  "刘雨娴","王江辉","王林林",
+  "谢博文","袁钰杰","张如梦",
+  "周琛","陈香杏","贾超男",
+  "焦琦珺","金子昊","李赓宸",
+  "李明翰","刘飞龙","彭艳",
+  "浦柏渠","叶乃波","于乘龙",
+  "赵文静","周腾龙","陈怡冰",
+  "刘海垚"
+].map((name,i)=>({no:i+1,name:name}));
+
+const WEEKS = ["W12","W13","W14","W15","W16","W17","W18"];
+const PER = 4;
+const ACCENTS = [
+  ["#4c1d95","#8b5cf6"],["#6d28d9","#a78bfa"],["#7c3aed","#c084fc"],
+  ["#9333ea","#d8b4fe"],["#a21caf","#e879f9"],["#c026d3","#f0abfc"],
+  ["#db2777","#f9a8d4"]
+];
+const KEY = "lrx_w12w18_order_v2";
+const $ = id => document.getElementById(id);
+
+let slots = [], weekCards = [];
+let current = null;
+let drawing = false;
+
+function randInt(n) {
+  const lim = Math.floor(0x100000000 / n) * n;
+  const b = new Uint32Array(1);
+  let x;
+  do { crypto.getRandomValues(b); x = b[0]; } while (x >= lim);
+  return x % n;
+}
+function shuffled() {
+  const a = STUDENTS.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randInt(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function build() {
+  const box = $("weeks");
+  box.innerHTML = ""; slots = []; weekCards = [];
+  WEEKS.forEach((w, wi) => {
+    const card = document.createElement("div");
+    card.className = "week";
+    card.style.setProperty("--a", ACCENTS[wi][0]);
+    card.style.setProperty("--b", ACCENTS[wi][1]);
+    card.innerHTML = '<div class="week-head">' + w + '</div>';
+    const body = document.createElement("div");
+    body.className = "week-body";
+    for (let s = 0; s < PER; s++) {
+      const slot = document.createElement("div");
+      slot.className = "slot rolling";
+      slot.dataset.rank = wi * PER + s + 1;
+      slot.innerHTML = '<span class="rank">?</span><span class="name">？？？</span>';
+      body.appendChild(slot);
+      slots.push(slot);
+    }
+    card.appendChild(body);
+    box.appendChild(card);
+    weekCards.push(card);
+  });
+}
+
+function draw() {
+  if (drawing) return;
+  drawing = true;
+  $("drawBtn").disabled = true;
+  $("copyBtn").classList.add("hidden");
+  $("printBtn").classList.add("hidden");
+  build();
+  const result = shuffled();
+
+  const roll = setInterval(() => {
+    slots.forEach(s => {
+      s.querySelector(".name").textContent = STUDENTS[randInt(STUDENTS.length)].name;
+    });
+  }, 70);
+
+  setTimeout(() => {
+    clearInterval(roll);
+    let i = 0;
+    const rev = setInterval(() => {
+      const s = slots[i];
+      s.classList.remove("rolling");
+      s.classList.add("revealed");
+      s.querySelector(".rank").textContent = s.dataset.rank;
+      s.querySelector(".name").textContent = result[i].name;
+      if (i % PER === 0) weekCards[Math.floor(i / PER)].classList.add("on");
+      for (let k = i + 1; k < slots.length; k++) {
+        slots[k].querySelector(".name").textContent = STUDENTS[randInt(STUDENTS.length)].name;
+      }
+      i++;
+      if (i >= slots.length) {
+        clearInterval(rev);
+        finish(result);
+      }
+    }, 115);
+  }, 1600);
+}
+
+function finish(result) {
+  current = result;
+  drawing = false;
+  $("drawBtn").disabled = false;
+  $("drawBtn").textContent = "再抽一次";
+  $("copyBtn").classList.remove("hidden");
+  $("printBtn").classList.remove("hidden");
+  try { localStorage.setItem(KEY, JSON.stringify(result.map(s => s.no))); } catch(e) {}
+}
+
+function restore() {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (!d || !Array.isArray(d) || d.length !== STUDENTS.length) return false;
+    if (new Set(d).size !== STUDENTS.length) return false;
+    if (d.some(no => no < 1 || no > STUDENTS.length)) return false;
+    const res = d.map(no => STUDENTS[no - 1]);
+    current = res;
+    build();
+    res.forEach((s, i) => {
+      const sl = slots[i];
+      sl.classList.remove("rolling");
+      sl.classList.add("revealed");
+      sl.querySelector(".rank").textContent = i + 1;
+      sl.querySelector(".name").textContent = s.name;
+    });
+    weekCards.forEach(c => c.classList.add("on"));
+    $("drawBtn").textContent = "再抽一次";
+    $("copyBtn").classList.remove("hidden");
+    $("printBtn").classList.remove("hidden");
+    return true;
+  } catch(e) { return false; }
+}
+
+function copyResult() {
+  if (!current) return;
+  const lines = ["汇报排序 W12–W18"];
+  WEEKS.forEach((w, wi) => {
+    lines.push(w + "：" + current.slice(wi * PER, (wi + 1) * PER)
+      .map((s, k) => (wi * PER + k + 1) + "." + s.name).join("  "));
+  });
+  const text = lines.join("\n");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast("已复制"), () => fallbackCopy(text));
+  } else fallbackCopy(text);
+}
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch(e) {}
+  document.body.removeChild(ta);
+  toast(ok ? "已复制" : "复制失败");
+}
+
+build();
+restore();
+$("drawBtn").addEventListener("click", draw);
+$("copyBtn").addEventListener("click", copyResult);
+$("printBtn").addEventListener("click", () => window.print());
+</script>
+</body>
+</html>

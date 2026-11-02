@@ -44,13 +44,9 @@ a:hover{text-decoration:underline}
 .sec-body{margin-top:1.6rem}
 
 /* ---------- Tool cards ---------- */
-.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.tools-grid{display:grid;grid-template-columns:minmax(300px,540px);gap:18px;justify-content:center}
 .tool-card{background:var(--card);border:1px solid #e3e9f2;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(58,0,115,.06)}
 .tool-card .head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #edf1f7}
-.tool-card .num{
-  background:linear-gradient(140deg,#3A0073,#6A24C4);color:#fff;font-weight:800;width:34px;height:34px;border-radius:9px;
-  display:flex;align-items:center;justify-content:center;font-size:.95rem;flex:none;
-}
 .tool-card .name{font-weight:800;font-size:1.02rem;line-height:1.35}
 .tool-card .name a{color:var(--navy)}
 .tool-card .row{padding:12px 18px}
@@ -86,22 +82,10 @@ footer .muted{color:#9db8d8;font-size:.82rem;margin-top:.5rem}
     <div class="sec-head">
       <h2>课程工具</h2>
     </div>
-    <div class="sec-body grid-2">
+    <div class="sec-body tools-grid">
 
       <div class="tool-card">
         <div class="head">
-          <div class="num">1</div>
-          <div class="name"><a href="presentation_order.html">汇报排序</a></div>
-        </div>
-        <div class="row">
-          <p>随机生成第 12–18 周每周 4 人的课堂汇报顺序。</p>
-          <a class="go" href="presentation_order.html">打开 →</a>
-        </div>
-      </div>
-
-      <div class="tool-card">
-        <div class="head">
-          <div class="num">2</div>
           <div class="name"><a href="peer_scoring.html">互评打分</a></div>
         </div>
         <div class="row">

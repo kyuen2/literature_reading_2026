@@ -298,7 +298,7 @@ function renderChips() {
 
 function selectMe(no) {
   me = no;
-  draft = raters[no] ? Object.assign({}, raters[no].s) : {};
+  draft = {}; /* 不回显已提交评分：任何人点击他人名字都只能看到空白表 */
   $("rateCard").classList.remove("hidden");
   $("meTag").textContent = "（我是：" + nameOf(no) + "）";
   $("actionbar").classList.remove("hidden");

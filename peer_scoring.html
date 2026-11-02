@@ -83,6 +83,18 @@ table.matrix{border-collapse:separate;border-spacing:0;font-size:10.5px}
 .matrix td{background:#fff}
 .matrix td.self{background:#eae4fb;color:#c4b5fd}
 .matrix td.na{background:#fff}
+.matrix tfoot th{position:sticky;bottom:0;left:0;background:#e6defc;color:#3A0073;font-weight:800;z-index:5;border-top:2px solid #d8ccf5;writing-mode:horizontal-tb;min-width:56px;text-align:left;padding:6px 8px}
+.matrix tfoot td{position:sticky;bottom:0;background:#efe9ff;color:#3A0073;font-weight:800;z-index:3;border-top:2px solid #d8ccf5}
+/* 考勤 */
+table.att{border-collapse:separate;border-spacing:0;font-size:13px}
+.att th,.att td{border-right:1px solid #f3efff;border-bottom:1px solid #f3efff;padding:5px 10px;text-align:center}
+.att thead th{position:sticky;top:0;background:#efe9ff;z-index:3;cursor:pointer;font-weight:700;color:#5b4fa0;white-space:nowrap}
+.att tbody th{position:sticky;left:0;background:#f7f5ff;font-weight:700;color:#5b4fa0;z-index:2;text-align:left;white-space:nowrap}
+.att td{cursor:pointer;user-select:none;color:#c9c2e8;min-width:44px}
+.att td.on{background:#d1fae5;color:#047857;font-weight:800}
+.att td.sumc{background:#fdfcff;color:#5b4fa0;font-weight:700;cursor:default}
+.att tfoot th,.att tfoot td{position:sticky;bottom:0;background:#efe9ff;font-weight:800;color:#3A0073;z-index:3}
+.att tfoot th{left:0;z-index:5}
 .tools{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 .tinput{width:100%;padding:10px 12px;border:1.5px solid #e4ddff;border-radius:11px;font:inherit;font-size:14px;outline:none;background:#fff;color:#241a4d}
 .tinput:focus{border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.15)}
@@ -164,6 +176,11 @@ table.matrix{border-collapse:separate;border-spacing:0;font-size:10.5px}
       <div class="mwrap"><table class="matrix" id="matrixTable"></table></div>
     </details>
     <details class="card">
+      <summary>考勤</summary>
+      <div class="mwrap"><table class="att" id="attTable"></table></div>
+      <div class="tools"><button type="button" class="btn lt danger" id="attClearBtn">清空考勤</button></div>
+    </details>
+    <details class="card">
       <summary>工具</summary>
       <div class="tools">
         <button type="button" class="btn lt" id="exportBtn">导出 JSON</button>
@@ -228,6 +245,8 @@ const STUDENTS = [
 ].map((name,i)=>({no:i+1,name:name}));
 
 const KEY = "lrx_peer_scores_v1";
+const ATT_KEY = "lrx_attendance_v1";
+const ATT_WEEKS = ["W11","W12","W13","W14","W15","W16","W17","W18"];
 const PASS_KEY = "lrx_peer_scores_pass_v1";
 const STU_PASS_KEY = "lrx_peer_scores_stu_pass_v1";
 const SESSION_KEY = "lrx_teacher_session";
@@ -239,6 +258,7 @@ const TOTAL_RATEES = N - 1;
 const $ = id => document.getElementById(id);
 
 let raters = {};
+let attendance = {};
 let me = null;
 let draft = {};
 
@@ -431,11 +451,64 @@ function renderMatrix() {
     });
     html += "</tr>";
   });
-  html += "</tbody>";
+  /* 定版均分：未收到的评分按 0 计（分母固定为 27），0 票即为 0 分 */
+  const stats = receivedStats();
+  html += "</tbody><tfoot><tr><th>收到平均</th>";
+  STUDENTS.forEach(c => {
+    const st = stats[c.no - 1];
+    html += "<td>" + avg1(st.sum / TOTAL_RATEES) + "</td>";
+  });
+  html += "</tr></tfoot>";
   $("matrixTable").innerHTML = html;
 }
 
-function renderTeacher() { renderProgress(); renderSummary(); renderMatrix(); }
+/* ===== 考勤 ===== */
+function sanitizeAttendance(d) {
+  const out = {};
+  if (!d || typeof d !== "object") return out;
+  for (const k of Object.keys(d)) {
+    const no = parseInt(k, 10);
+    if (!(no >= 1 && no <= N)) continue;
+    const w = d[k];
+    if (!w || typeof w !== "object") continue;
+    const row = {};
+    for (const wk of Object.keys(w)) { if (ATT_WEEKS.indexOf(wk) >= 0 && w[wk]) row[wk] = 1; }
+    if (Object.keys(row).length) out[no] = row;
+  }
+  return out;
+}
+function loadAttendance() {
+  try { attendance = sanitizeAttendance(JSON.parse(localStorage.getItem(ATT_KEY) || "{}")); }
+  catch(e) { attendance = {}; }
+}
+function saveAttendance() {
+  try { localStorage.setItem(ATT_KEY, JSON.stringify(attendance)); } catch(e) {}
+}
+function attCount(no) { return attendance[no] ? Object.keys(attendance[no]).length : 0; }
+
+function renderAttendance() {
+  let html = "<thead><tr><th>姓名</th>";
+  ATT_WEEKS.forEach(w => { html += "<th data-week=\"" + w + "\">" + w + "</th>"; });
+  html += "<th>出勤</th></tr></thead><tbody>";
+  STUDENTS.forEach(s => {
+    html += "<tr><th>" + s.name + "</th>";
+    ATT_WEEKS.forEach(w => {
+      const on = attendance[s.no] && attendance[s.no][w];
+      html += "<td data-no=\"" + s.no + "\" data-week=\"" + w + "\"" + (on ? " class=\"on\"" : "") + ">" + (on ? "✓" : "·") + "</td>";
+    });
+    html += "<td class=\"sumc\">" + attCount(s.no) + "</td></tr>";
+  });
+  html += "</tbody><tfoot><tr><th>到课</th>";
+  ATT_WEEKS.forEach(w => {
+    let c = 0;
+    STUDENTS.forEach(s => { if (attendance[s.no] && attendance[s.no][w]) c++; });
+    html += "<td data-week=\"" + w + "\">" + c + "</td>";
+  });
+  html += "<td></td></tr></tfoot>";
+  $("attTable").innerHTML = html;
+}
+
+function renderTeacher() { renderProgress(); renderSummary(); renderMatrix(); renderAttendance(); }
 function enterTeacher() { renderTeacher(); showView("viewTeacher"); }
 
 function copySummary() {
@@ -539,7 +612,7 @@ function download(name, text, mime) {
 
 /* 导出 / 导入 / 清空 */
 function exportJSON() {
-  download("peer_scores_" + stamp() + ".json", JSON.stringify({ ratings: raters }, null, 2));
+  download("peer_scores_" + stamp() + ".json", JSON.stringify({ ratings: raters, attendance: attendance }, null, 2));
   toast("已导出");
 }
 function exportCSV() {
@@ -568,6 +641,15 @@ function importFile(f) {
         const no = +k;
         if (!raters[no] || inc[k].t > raters[no].t) raters[no] = inc[k];
       }
+      if (d && d.attendance) {
+        const incAtt = sanitizeAttendance(d.attendance);
+        for (const k of Object.keys(incAtt)) {
+          const no = +k;
+          if (!attendance[no]) attendance[no] = {};
+          for (const wk of Object.keys(incAtt[k])) attendance[no][wk] = 1;
+        }
+        saveAttendance();
+      }
       saveStore();
       renderTeacher();
       renderChips();
@@ -579,6 +661,7 @@ function importFile(f) {
 
 /* 初始化 */
 loadStore();
+loadAttendance();
 resetStudentView();
 renderTeacher();
 
@@ -615,6 +698,38 @@ $("exportBtn").addEventListener("click", exportJSON);
 $("csvBtn").addEventListener("click", exportCSV);
 $("importBtn").addEventListener("click", () => $("importFile").click());
 $("importFile").addEventListener("change", ev => { importFile(ev.target.files && ev.target.files[0]); ev.target.value = ""; });
+$("attTable").addEventListener("click", ev => {
+  const td = ev.target.closest("td[data-no]");
+  if (td) {
+    const no = +td.dataset.no, wk = td.dataset.week;
+    if (!attendance[no]) attendance[no] = {};
+    if (attendance[no][wk]) delete attendance[no][wk];
+    else attendance[no][wk] = 1;
+    if (!Object.keys(attendance[no]).length) delete attendance[no];
+    saveAttendance();
+    renderAttendance();
+    return;
+  }
+  const th = ev.target.closest("thead th[data-week]");
+  if (th) {
+    const wk = th.dataset.week;
+    STUDENTS.forEach(s => {
+      if (!attendance[s.no]) attendance[s.no] = {};
+      attendance[s.no][wk] = 1;
+    });
+    saveAttendance();
+    renderAttendance();
+  }
+});
+$("attClearBtn").addEventListener("click", () => {
+  if (!Object.keys(attendance).length) { toast("无数据"); return; }
+  if (confirm("确定清空全部考勤？")) {
+    attendance = {};
+    saveAttendance();
+    renderAttendance();
+    toast("已清空");
+  }
+});
 $("clearBtn").addEventListener("click", () => {
   if (!Object.keys(raters).length) { toast("无数据"); return; }
   if (confirm("确定清空全部评分？")) {

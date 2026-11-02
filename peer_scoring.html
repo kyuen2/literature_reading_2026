@@ -131,6 +131,7 @@ table.matrix{border-collapse:separate;border-spacing:0;font-size:10.5px}
     <div class="viewhead">
       <button type="button" class="btn ghostdark" id="studentHome">← 返回</button>
       <span class="vtitle">学生评分</span>
+      <button type="button" class="btn ghostdark" id="stuLogoutBtn">退出</button>
     </div>
     <section class="card">
       <h2>选择你的名字</h2>
@@ -171,12 +172,18 @@ table.matrix{border-collapse:separate;border-spacing:0;font-size:10.5px}
         <button type="button" class="btn lt danger" id="clearBtn">清空</button>
         <input type="file" id="importFile" accept=".json,application/json" class="hidden"/>
       </div>
-      <h4>修改密码</h4>
+      <h4>教师密码</h4>
       <div class="pw-grid">
         <input type="password" class="tinput" id="np1" placeholder="新密码" autocomplete="new-password"/>
         <input type="password" class="tinput" id="np2" placeholder="确认密码" autocomplete="new-password"/>
       </div>
       <div class="tools"><button type="button" class="btn lt" id="passChangeBtn">保存</button></div>
+      <h4>学生密码</h4>
+      <div class="pw-grid">
+        <input type="password" class="tinput" id="sp1" placeholder="新密码" autocomplete="new-password"/>
+        <input type="password" class="tinput" id="sp2" placeholder="确认密码" autocomplete="new-password"/>
+      </div>
+      <div class="tools"><button type="button" class="btn lt" id="stuPassChangeBtn">保存</button></div>
     </details>
   </div>
 
@@ -192,7 +199,7 @@ table.matrix{border-collapse:separate;border-spacing:0;font-size:10.5px}
 <!-- 登录弹窗 -->
 <div class="modal hidden" id="loginModal">
   <div class="modalbox">
-    <h3>教师登录</h3>
+    <h3 id="loginTitle">教师登录</h3>
     <input type="password" class="tinput" id="passInput" placeholder="密码" autocomplete="off"/>
     <p class="perr hidden" id="passErr">密码不正确</p>
     <div class="mrow">
@@ -222,8 +229,11 @@ const STUDENTS = [
 
 const KEY = "lrx_peer_scores_v1";
 const PASS_KEY = "lrx_peer_scores_pass_v1";
+const STU_PASS_KEY = "lrx_peer_scores_stu_pass_v1";
 const SESSION_KEY = "lrx_teacher_session";
+const SESSION_STU_KEY = "lrx_student_session";
 const DEFAULT_HASH = "01d58c1ac3df6d023d869e50bf78e2f9185332c281f665fd53f6dbd7592df45e";
+const DEFAULT_STUDENT_HASH = "b8e2b6b603da0e6f54883b6159bd27b2bc290e0739849bcfe9ed8694b42ea038";
 const N = STUDENTS.length;
 const TOTAL_RATEES = N - 1;
 const $ = id => document.getElementById(id);
@@ -328,16 +338,17 @@ function buildRows() {
   });
 }
 
+/* 允许部分提交：提交时至少评 1 人即可 */
 function updateCounter() {
   const done = Object.keys(draft).length;
   $("counter").textContent = "已评 " + done + " / " + TOTAL_RATEES;
-  $("submitBtn").disabled = done !== TOTAL_RATEES;
+  $("submitBtn").disabled = done === 0;
 }
 
 /* 重复提交直接覆盖，仅保留最后一次 */
 function submitMine() {
   if (me === null) return;
-  if (Object.keys(draft).length !== TOTAL_RATEES) return;
+  if (Object.keys(draft).length === 0) return;
   raters[me] = { t: new Date().toISOString(), s: draft };
   const ok = saveStore();
   me = null; draft = {};
@@ -437,7 +448,8 @@ function copySummary() {
   copyTextPlain(lines.join("\n"), "已复制");
 }
 
-/* 教师登录 */
+/* 登录（教师 / 学生共用弹窗，仅存哈希） */
+let loginMode = "teacher";
 async function sha256(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -446,7 +458,13 @@ function getPassHash() {
   try { const h = localStorage.getItem(PASS_KEY); if (h) return h; } catch(e) {}
   return DEFAULT_HASH;
 }
-function openLogin() {
+function getStuPassHash() {
+  try { const h = localStorage.getItem(STU_PASS_KEY); if (h) return h; } catch(e) {}
+  return DEFAULT_STUDENT_HASH;
+}
+function openLogin(mode) {
+  loginMode = mode || "teacher";
+  $("loginTitle").textContent = loginMode === "student" ? "学生登录" : "教师登录";
   $("passInput").value = "";
   $("passErr").classList.add("hidden");
   $("loginModal").classList.remove("hidden");
@@ -459,14 +477,16 @@ async function tryLogin() {
   let h;
   try { h = await sha256(v); }
   catch(e) { toast("此浏览器不支持"); return; }
-  if (h === getPassHash()) {
-    try { sessionStorage.setItem(SESSION_KEY, "1"); } catch(e) {}
+  const target = loginMode === "student" ? getStuPassHash() : getPassHash();
+  if (h === target) {
+    try { sessionStorage.setItem(loginMode === "student" ? SESSION_STU_KEY : SESSION_KEY, "1"); } catch(e) {}
     closeLogin();
-    enterTeacher();
+    if (loginMode === "student") enterStudent(); else enterTeacher();
   } else {
     $("passErr").classList.remove("hidden");
   }
 }
+function enterStudent() { resetStudentView(); showView("viewStudent"); }
 async function changePass() {
   const p = $("np1").value, p2 = $("np2").value;
   if (p.length < 4) { toast("至少 4 位"); return; }
@@ -474,7 +494,17 @@ async function changePass() {
   try {
     localStorage.setItem(PASS_KEY, await sha256(p));
     $("np1").value = ""; $("np2").value = "";
-    toast("密码已修改");
+    toast("已修改");
+  } catch(e) { toast("保存失败"); }
+}
+async function changeStuPass() {
+  const p = $("sp1").value, p2 = $("sp2").value;
+  if (p.length < 4) { toast("至少 4 位"); return; }
+  if (p !== p2) { toast("两次输入不一致"); return; }
+  try {
+    localStorage.setItem(STU_PASS_KEY, await sha256(p));
+    $("sp1").value = ""; $("sp2").value = "";
+    toast("已修改");
   } catch(e) { toast("保存失败"); }
 }
 
@@ -552,12 +582,20 @@ loadStore();
 resetStudentView();
 renderTeacher();
 
-$("studentEntry").addEventListener("click", () => { resetStudentView(); showView("viewStudent"); });
+$("studentEntry").addEventListener("click", () => {
+  let ok = false;
+  try { ok = sessionStorage.getItem(SESSION_STU_KEY) === "1"; } catch(e) {}
+  if (ok) enterStudent(); else openLogin("student");
+});
 $("studentHome").addEventListener("click", () => { resetStudentView(); showView("viewHome"); });
+$("stuLogoutBtn").addEventListener("click", () => {
+  try { sessionStorage.removeItem(SESSION_STU_KEY); } catch(e) {}
+  showView("viewHome");
+});
 $("teacherEntry").addEventListener("click", () => {
   let ok = false;
   try { ok = sessionStorage.getItem(SESSION_KEY) === "1"; } catch(e) {}
-  if (ok) enterTeacher(); else openLogin();
+  if (ok) enterTeacher(); else openLogin("teacher");
 });
 $("teacherHome").addEventListener("click", () => showView("viewHome"));
 $("logoutBtn").addEventListener("click", () => {
@@ -569,6 +607,7 @@ $("passCancel").addEventListener("click", closeLogin);
 $("passInput").addEventListener("keydown", ev => { if (ev.key === "Enter") tryLogin(); });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeLogin(); });
 $("passChangeBtn").addEventListener("click", changePass);
+$("stuPassChangeBtn").addEventListener("click", changeStuPass);
 $("submitBtn").addEventListener("click", submitMine);
 $("cancelBtn").addEventListener("click", cancelMine);
 $("copySumBtn").addEventListener("click", copySummary);

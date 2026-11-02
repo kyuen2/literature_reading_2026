@@ -92,6 +92,7 @@ table.att{border-collapse:separate;border-spacing:0;font-size:13px}
 .att tbody th{position:sticky;left:0;background:#f7f5ff;font-weight:700;color:#5b4fa0;z-index:2;text-align:left;white-space:nowrap}
 .att td{cursor:pointer;user-select:none;color:#c9c2e8;min-width:44px}
 .att td.on{background:#d1fae5;color:#047857;font-weight:800}
+.att td.lv{background:#fef3c7;color:#b45309;font-weight:800}
 .att td.sumc{background:#fdfcff;color:#5b4fa0;font-weight:700;cursor:default}
 .att tfoot th,.att tfoot td{position:sticky;bottom:0;background:#efe9ff;font-weight:800;color:#3A0073;z-index:3}
 .att tfoot th{left:0;z-index:5}
@@ -473,7 +474,10 @@ function sanitizeAttendance(d) {
     const w = d[k];
     if (!w || typeof w !== "object") continue;
     const row = {};
-    for (const wk of Object.keys(w)) { if (ATT_WEEKS.indexOf(wk) >= 0 && w[wk]) row[wk] = 1; }
+    for (const wk of Object.keys(w)) {
+      if (ATT_WEEKS.indexOf(wk) < 0 || !w[wk]) continue;
+      row[wk] = (w[wk] === 2) ? 2 : 1;   /* 1=到课 2=请假(计为出勤) */
+    }
     if (Object.keys(row).length) out[no] = row;
   }
   return out;
@@ -494,8 +498,11 @@ function renderAttendance() {
   STUDENTS.forEach(s => {
     html += "<tr><th>" + s.name + "</th>";
     ATT_WEEKS.forEach(w => {
-      const on = attendance[s.no] && attendance[s.no][w];
-      html += "<td data-no=\"" + s.no + "\" data-week=\"" + w + "\"" + (on ? " class=\"on\"" : "") + ">" + (on ? "✓" : "·") + "</td>";
+      const v = attendance[s.no] ? attendance[s.no][w] : 0;
+      let cls = "", txt = "·";
+      if (v === 1) { cls = " on"; txt = "✓"; }
+      else if (v === 2) { cls = " lv"; txt = "假"; }
+      html += "<td data-no=\"" + s.no + "\" data-week=\"" + w + "\" class=\"" + cls + "\">" + txt + "</td>";
     });
     html += "<td class=\"sumc\">" + attCount(s.no) + "</td></tr>";
   });
@@ -642,15 +649,17 @@ function importFile(f) {
         const no = +k;
         if (!raters[no] || inc[k].t > raters[no].t) raters[no] = inc[k];
       }
-      if (d && d.attendance) {
-        const incAtt = sanitizeAttendance(d.attendance);
-        for (const k of Object.keys(incAtt)) {
-          const no = +k;
-          if (!attendance[no]) attendance[no] = {};
-          for (const wk of Object.keys(incAtt[k])) attendance[no][wk] = 1;
+        if (d && d.attendance) {
+          const incAtt = sanitizeAttendance(d.attendance);
+          for (const k of Object.keys(incAtt)) {
+            const no = +k;
+            if (!attendance[no]) attendance[no] = {};
+            for (const wk of Object.keys(incAtt[k])) {
+              if (!attendance[no][wk]) attendance[no][wk] = incAtt[k][wk];
+            }
+          }
+          saveAttendance();
         }
-        saveAttendance();
-      }
       saveStore();
       renderTeacher();
       renderChips();
@@ -704,8 +713,10 @@ $("attTable").addEventListener("click", ev => {
   if (td) {
     const no = +td.dataset.no, wk = td.dataset.week;
     if (!attendance[no]) attendance[no] = {};
-    if (attendance[no][wk]) delete attendance[no][wk];
-    else attendance[no][wk] = 1;
+    const cur = attendance[no][wk] || 0;
+    const next = cur === 0 ? 1 : (cur === 1 ? 2 : 0);   /* 未记 → 到课 → 请假 → 未记 */
+    if (next === 0) delete attendance[no][wk];
+    else attendance[no][wk] = next;
     if (!Object.keys(attendance[no]).length) delete attendance[no];
     saveAttendance();
     renderAttendance();
@@ -716,7 +727,7 @@ $("attTable").addEventListener("click", ev => {
     const wk = th.dataset.week;
     STUDENTS.forEach(s => {
       if (!attendance[s.no]) attendance[s.no] = {};
-      attendance[s.no][wk] = 1;
+      if (!attendance[s.no][wk]) attendance[s.no][wk] = 1;   /* 只补未标记的，不覆盖已有到课/请假 */
     });
     saveAttendance();
     renderAttendance();

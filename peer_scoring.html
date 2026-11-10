@@ -233,18 +233,16 @@ table.att{border-collapse:separate;border-spacing:0;font-size:13px}
 <script>
 "use strict";
 /* 教师密码仅以 SHA-256 哈希保存，可在教师端「工具」中修改 */
+/* 名单顺序 = 汇报顺序（W12–W18，每周 4 人）；no 为点名册学号，保持不变以兼容已保存的评分/考勤数据 */
 const STUDENTS = [
-  "陈卓儒","董琼璘","李南稣",
-  "李易阳","李卓帆","刘思远",
-  "刘雨娴","王江辉","王林林",
-  "谢博文","袁钰杰","张如梦",
-  "周琛","陈香杏","贾超男",
-  "焦琦珺","金子昊","李赓宸",
-  "李明翰","刘飞龙","彭艳",
-  "浦柏渠","叶乃波","于乘龙",
-  "赵文静","周腾龙","陈怡冰",
-  "刘海垚"
-].map((name,i)=>({no:i+1,name:name}));
+  [13,"周琛"],[26,"周腾龙"],[6,"刘思远"],[9,"王林林"],
+  [25,"赵文静"],[11,"袁钰杰"],[28,"刘海垚"],[4,"李易阳"],
+  [20,"刘飞龙"],[27,"陈怡冰"],[2,"董琼璘"],[19,"李明翰"],
+  [14,"陈香杏"],[12,"张如梦"],[23,"叶乃波"],[3,"李南稣"],
+  [22,"浦柏渠"],[17,"金子昊"],[16,"焦琦珺"],[21,"彭艳"],
+  [1,"陈卓儒"],[8,"王江辉"],[7,"刘雨娴"],[10,"谢博文"],
+  [15,"贾超男"],[24,"于乘龙"],[5,"李卓帆"],[18,"李赓宸"]
+].map(([no,name])=>({no:no,name:name}));
 
 const KEY = "lrx_peer_scores_v1";
 const ATT_KEY = "lrx_attendance_v1";
@@ -266,7 +264,7 @@ let draft = {};
 
 function stamp() { const t = new Date(); const p = n => String(n).padStart(2, "0"); return "" + t.getFullYear() + p(t.getMonth() + 1) + p(t.getDate()) + "_" + p(t.getHours()) + p(t.getMinutes()); }
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2400); }
-function nameOf(no) { const s = STUDENTS[no - 1]; return s ? s.name : "?"; }
+function nameOf(no) { const s = STUDENTS.find(x => x.no === no); return s ? s.name : "?"; }
 
 /* 视图 */
 function showView(v) {
@@ -404,11 +402,13 @@ function renderProgress() {
 
 function receivedStats() {
   const stats = STUDENTS.map(s => ({ no: s.no, name: s.name, sum: 0, scores: [] }));
+  const byNo = {};
+  stats.forEach(st => { byNo[st.no] = st; });
   for (const k of Object.keys(raters)) {
     const e = raters[k];
     for (const rk of Object.keys(e.s)) {
-      const rn = +rk;
-      if (stats[rn - 1]) { stats[rn - 1].sum += e.s[rk]; stats[rn - 1].scores.push(e.s[rk]); }
+      const st = byNo[+rk];
+      if (st) { st.sum += e.s[rk]; st.scores.push(e.s[rk]); }
     }
   }
   return stats;
@@ -456,8 +456,8 @@ function renderMatrix() {
   /* 定版均分：未收到的评分按 0 计（分母固定为 27），0 票即为 0 分 */
   const stats = receivedStats();
   html += "</tbody><tfoot><tr><th>收到平均</th>";
-  STUDENTS.forEach(c => {
-    const st = stats[c.no - 1];
+  STUDENTS.forEach((c, ci) => {
+    const st = stats[ci];
     html += "<td>" + avg1(st.sum / TOTAL_RATEES) + "</td>";
   });
   html += "</tr></tfoot>";
